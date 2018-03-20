@@ -198,7 +198,7 @@ void calc_hard(int comm_size, int comm_rank, int N)
     double *x_vect = init_double_vector(N);
 
     // collect all buffer_part from all processes to buffer
-    MPI_Allgatherv(buffer_part, lines_num[comm_rank], 
+    MPI_Allgatherv(x_vect_part, lines_num[comm_rank], 
         MPI_DOUBLE, x_vect, lines_num, offsets, MPI_DOUBLE, MPI_COMM_WORLD);
 
     if (comm_rank == 0) {
