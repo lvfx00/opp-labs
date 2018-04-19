@@ -158,15 +158,63 @@ int main(int argc, char **argv) {
         MPI_Scatter(B, 1, col_type, B_part, col_num, row_type, 0, row_comm);
     }
 
-    if(comm_rank_x == 3 && comm_rank_y == 1) {
+    
+    // broadcast A_parts through process rows
+    MPI_Bcast(B_part, col_num, row_type, 0, col_comm);
+
+    /*
+    if(comm_rank_x == 0 && comm_rank_y == 0) {
         printf("%d\n", col_num);
-        for(int i = 0; i < n2; ++i) {
-            for(int j = 0; j < col_num; ++j) {
-                printf("%lf   ", B_part[i * col_num + j]);
+        for(int i = 0; i < col_num; ++i) {
+            for(int j = 0; j < n2; ++j) {
+                printf("%lf   ", B_part[j * col_num + i]);
             }
             printf("\n");
         }
     }
+    */
+    ////////////////////////////////////////////////////////////////////////////
+    double *C_part = (double*)calloc(col_num * row_num, sizeof(double));
+    assert(C_part != NULL);
+
+    for(int i = 0; i < row_num; ++i) {
+        for(int j = 0; j < col_num; ++j) {
+            for(int k = 0; k < n2; ++k) {
+                C_part[i * col_num + j] += A_part[i * n2 + k] * B_part[j + k * col_num];
+            }
+        }
+    }
+
+    /*
+    if(comm_rank_x == 1 && comm_rank_y == 0) {
+        for(int i = 0; i < row_num; ++i) {
+            for(int j = 0; j < col_num; ++j) {
+                printf("%lf   ", C_part[i * col_num + j]);
+            }
+            printf("\n");
+        }
+    }
+    */
+
+    //////////////////////////////////////////////////////////////////////////////
+
+    MPI_Datatype temp_type2, col_type2;
+    MPI_Type_vector(row_num, col_num, n2, MPI_DOUBLE, &temp_type);
+    MPI_Type_create_resized(temp_type, 0, sizeof(double) * col_num, &col_type);
+    MPI_Type_commit(&col_type);
+
+    double *C;
+    if(comm_rank_x == 0 && comm_size_y == 0) {
+        C = (double*)calloc(n1 * n3, sizeof(double));
+        assert(C != NULL);
+    }
+
+    
+
+
+
+
+
 
     MPI_Comm_free(&row_comm);
     MPI_Comm_free(&col_comm);
