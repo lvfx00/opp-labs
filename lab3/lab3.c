@@ -3,9 +3,9 @@
 #include "stdlib.h"
 #include "assert.h"
 
-#define n1 32
-#define n2 6
-#define n3 16
+#define n1 12
+#define n2 12
+#define n3 12
 
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
             }
         }
     }
-    
+
     // create type for A matrix row
     MPI_Datatype row_type;
     MPI_Type_contiguous(n2, MPI_DOUBLE, &row_type);
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
         // fill the matrix
         for(int i = 0; i < n2; ++i) {
             for(int j = 0; j < n3; ++j) {
-                B[i * n3 + j] = 1000 * i + j;
+                B[i * n3 + j] = (i == j) ? 1 : 0;
             }
         }
     }
@@ -186,7 +186,7 @@ int main(int argc, char **argv) {
     }
 
     /*
-    if(comm_rank_x == 1 && comm_rank_y == 0) {
+    if(comm_rank_x == 0 && comm_rank_y == 1) {
         for(int i = 0; i < row_num; ++i) {
             for(int j = 0; j < col_num; ++j) {
                 printf("%lf   ", C_part[i * col_num + j]);
@@ -199,22 +199,51 @@ int main(int argc, char **argv) {
     //////////////////////////////////////////////////////////////////////////////
 
     MPI_Datatype temp_type2, col_type2;
-    MPI_Type_vector(row_num, col_num, n2, MPI_DOUBLE, &temp_type);
-    MPI_Type_create_resized(temp_type, 0, sizeof(double) * col_num, &col_type);
-    MPI_Type_commit(&col_type);
+    MPI_Type_vector(row_num, col_num, n3, MPI_DOUBLE, &temp_type2);
+    MPI_Type_create_resized(temp_type2, 0, sizeof(double) * col_num, &col_type2);
+    MPI_Type_commit(&col_type2);
 
     double *C;
-    if(comm_rank_x == 0 && comm_size_y == 0) {
+    if(comm_rank == 0) {
         C = (double*)calloc(n1 * n3, sizeof(double));
         assert(C != NULL);
     }
 
+    // number of sending elements (of type col2) for each process
+    int * revcounts = (int *)malloc(comm_size_x * comm_size_y * sizeof(int));
+    assert(revcounts != NULL);
+    for(int i = 0; i < comm_size_x * comm_size_y; ++i) {
+        revcounts[i] = 1;
+    }
+
+    // displacements of sending data for each process
+    int * displs2 = (int *)malloc(comm_size_x * comm_size_y * sizeof(int));
+    assert(displs2 != NULL);
+    for(int i = 0; i < comm_size_y; ++i) {
+        for(int j = 0; j < comm_size_x; ++j) {
+            displs2[i * comm_size_x + j] = i * row_num * comm_size_x + j;
+        }
+    }
+
+    if(comm_rank == 0) {
+        for(int i = 0; i < comm_size_y; ++i) {
+            for(int j = 0; j < comm_size_x; ++j) {
+                printf("%d   ", displs2[i * comm_size_x + j]);
+            }
+            printf("\n");
+        }
+    }
     
+    MPI_Gatherv(C_part, row_num * col_num, MPI_DOUBLE, C, revcounts, displs2, col_type2, 0, comm2d);
 
-
-
-
-
+    if(comm_rank == 0) {
+        for(int i = 0; i < n1; ++i) {
+            for(int j = 0; j < n3; ++j) {
+                printf("%lf   ", C[i * n1 + j]);
+            }
+            printf("\n");
+        }
+    }
 
     MPI_Comm_free(&row_comm);
     MPI_Comm_free(&col_comm);
