@@ -75,14 +75,15 @@ int main(int argc, char **argv) {
     key = comm_rank_y;
 
     MPI_Comm col_comm;
-    MPI_Comm_split(comm2d, color, key, &row_comm);
+    MPI_Comm_split(comm2d, color, key, &col_comm);
 
     int col_rank;
     MPI_Comm_rank(col_comm, &col_rank);
     int col_size;
     MPI_Comm_size(col_comm, &col_size);
 
-    printf("CARD X/Y: %d/%d \t ROW RANK/SIZE: %d/%d\n", comm_rank_x, comm_rank_y, row_rank, row_size);
+    //printf("CARD X/Y: %d/%d \t ROW RANK/SIZE: %d/%d\n", comm_rank_x, comm_rank_y, row_rank, row_size);
+    printf("CARD X/Y: %d/%d \t COL RANK/SIZE: %d/%d\n", comm_rank_x, comm_rank_y, col_rank, col_size);
     
     /*
     // create type for A matrix row
