@@ -3,30 +3,32 @@
 #include "stdlib.h"
 #include "assert.h"
 
-// rectangle starting point
-#define x0 -1.0
-#define y0 -1.0
-#define z0 -1.0
-
-// rectangle length
-#define Dx 2.0
-#define Dy 2.0
-#define Dz 2.0
-
-// number of nodes 
-#define Nx 20
-#define Ny 20
-#define Nz 20
-
-//
 #define APPROX 0
 
 // wanted function
 double fi(double x, double y, double z) {
-    return x * x + y * y + z * z;
+    return x*x + y*y + z*z;
 }
 
 int main(int argc, char **argv) {
+    // input data
+    
+    // rectangle starting point
+    static const double x0 = -1.0;
+    static const double y0 = -1.0;
+    static const double z0 = -1.0;
+
+    // rectangle sides
+    static const double Dx = 2.0;
+    static const double Dy = 2.0;
+    static const double Dz = 2.0;
+
+    // number of nodes 
+    static const int Nx = 20;
+    static const int Ny = 20;
+    static const int Nz = 20;
+
+    ////////////////////////////////////////////////////////////////////////////////
     MPI_Init(&argc, &argv);
 
     int comm_size;
@@ -75,22 +77,28 @@ int main(int argc, char **argv) {
     // F(x, y, z) at borders - known values of wanted function fi(z, y, z)
     // fi0th(x, y, z) on main area - beginning approximation
     
-    // fill main area
     // +1 in begin and -1 in end to skip neighbouring buffer bounds
     for(int i = 1; i < x_dim - 1; ++i) { 
         for(int j = 1; j < y_dim - 1; ++j) {
             for(int k = 0; k < z_dim - 1; ++k) {
-                double coord_x = (comm_rank_x * Nx_proc + i) * hx;
-                double coord_y = (comm_rank_y * Ny_proc + j) * hy;
-                double coord_z = k * hz;
+                double coord_x = x0 + (comm_rank_x * Nx_proc + i - 1) * hx;
+                double coord_y = y0 + (comm_rank_y * Ny_proc + j - 1) * hy;
+                double coord_z = z0 + k * hz;
 
-                // calc top border values
+                if(coord_x > 1 || coord_y > 1 || coord_z > 1) {
+                    printf("achtung!!!\n");
+                }
+
+                // check if we on border node:
+                    // top border
                 if((comm_rank_y == 0 && j == 1) || 
+                    // bottom border
                    (comm_rank_y == comm_size_y - 1 && j == y_dim - 2) ||
+                    // left border
                    (comm_rank_x == 0 && i == 1) ||
+                    // right border
                    (comm_rank_x == comm_size_x - 1 && i == x_dim - 2)) 
                 {
-                    printf("a");
                     proc_nodes[i*y_dim*z_dim + j*z_dim + k] 
                         = fi(coord_x, coord_y, coord_z);
                 } else {
@@ -103,10 +111,71 @@ int main(int argc, char **argv) {
     ////////////////////////////////////////////////////////////////////////////////
     // swap neighbouring buffer bounds
     
-    if(comm_rank_x == 1 && comm_rank_y == 0) {
-        for(int i = 0; i < x_dim; ++i) { 
-            for(int j = 0; j < y_dim; ++j) {
-                printf("%lf   ", proc_nodes[i*y_dim*z_dim + j*z_dim + 7]);
+    // create type for left and right borders
+    MPI_Datatype row_type;
+    MPI_Type_contiguous((y_dim-2)*z_dim, MPI_DOUBLE, &row_type);
+    MPI_Type_commit(&row_type);
+
+    // create type for top and bottom borders
+    MPI_Datatype temp_type, col_type;
+    MPI_Type_vector(x_dim-2, z_dim, y_dim*z_dim, MPI_DOUBLE, &temp_type);
+    MPI_Type_create_resized(temp_type, 0, sizeof(double) * z_dim, &col_type);
+    MPI_Type_commit(&col_type);
+
+    int next_x, prev_x, next_y, prev_y;
+    MPI_Cart_shift(comm2d, 0, 1, &prev_y, &next_y);
+    MPI_Cart_shift(comm2d, 1, 1, &prev_x, &next_x);
+
+    // send top border to upper proc
+    if(comm_rank_y != 0) {
+        MPI_Send(proc_nodes + z_dim*y_dim + z_dim,
+                1, col_type, prev_y, 0, comm2d);
+    }
+    // send bottom border to lower proc
+    if(comm_rank_y != comm_size_y - 1) {
+        MPI_Send(proc_nodes + 2*z_dim*y_dim - 2*z_dim,
+                1, col_type, next_y, 0, comm2d);
+    }
+    // send left border to <-
+    if(comm_rank_x != 0) {
+        MPI_Send(proc_nodes + z_dim*y_dim + z_dim,
+                1, row_type, prev_x, 0, comm2d);
+    }
+    // send right border to ->
+    if(comm_rank_x != comm_size_x - 1) {
+        MPI_Send(proc_nodes + z_dim*y_dim*(x_dim-2)+ z_dim,
+                1, row_type, next_x, 0, comm2d);
+
+    }
+
+    // recieve top neighbour bound from top
+    if(comm_rank_y != 0) {
+        MPI_Recv(proc_nodes + z_dim*y_dim,
+                1, col_type, prev_y, 0, comm2d, MPI_STATUS_IGNORE);
+    }
+    // recieve bottom neighbour bound from down
+    if(comm_rank_y != comm_size_y - 1) {
+        MPI_Recv(proc_nodes + z_dim*y_dim*2 - z_dim,
+                1, col_type, next_y, 0, comm2d, MPI_STATUS_IGNORE);
+    }
+    // recieve left neighbour bound <-
+    if(comm_rank_x != 0) {
+        MPI_Recv(proc_nodes + z_dim,
+                1, row_type, prev_x, 0, comm2d, MPI_STATUS_IGNORE);
+    }
+    // recieve right neighbour bound from ->
+    if(comm_rank_x != comm_size_x - 1) {
+        MPI_Recv(proc_nodes + z_dim*y_dim*(x_dim-1) + z_dim,
+                1, row_type, next_x, 0, comm2d, MPI_STATUS_IGNORE);
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    
+    if(comm_rank_x == 1 && comm_rank_y == 1) {
+        for(int i = 0; i < y_dim; ++i) { 
+            for(int j = 0; j < x_dim; ++j) {
+                printf("%lf   ", proc_nodes[j*y_dim*z_dim + i*z_dim + 0]);
             }
             printf("\n");
         }
