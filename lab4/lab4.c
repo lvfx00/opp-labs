@@ -26,9 +26,9 @@ int main(int argc, char **argv) {
     static const double Dz = 2.0;
 
     // number of nodes 
-    static const int Nx = 32;
-    static const int Ny = 32;
-    static const int Nz = 32;
+    static const int Nx = 24;
+    static const int Ny = 24;
+    static const int Nz = 24;
 
     static const double a = 100000;
     static const double epsilon = 1e-8;
@@ -54,6 +54,10 @@ int main(int argc, char **argv) {
     int comm_rank;
     MPI_Comm_rank(comm2d, &comm_rank);
 
+    if(comm_rank == 0) {
+        printf("x=%d y=%d\n", comm_size_x, comm_size_y);
+    }
+
     // get process coordinates in 2d proc matrix
     int coords[2];
     MPI_Cart_get(comm2d, 2, dims, periods, coords);
@@ -76,7 +80,8 @@ int main(int argc, char **argv) {
     int x_dim = Nx_proc + 2; // +2 for neighbouring processes buffer bounds
     int y_dim = Ny_proc + 2;
     int z_dim = Nz;
-    double proc_nodes[x_dim * y_dim * z_dim];
+    double *proc_nodes = (double*)malloc(sizeof(double) * x_dim * y_dim * z_dim);
+    assert(proc_nodes != NULL);
 
     // fill array by initial values:
     // F(x, y, z) at borders - known values of wanted function fi(z, y, z)
@@ -132,7 +137,8 @@ int main(int argc, char **argv) {
 
     int finished = 0;
 
-    double new_values[x_dim * y_dim * z_dim];
+    double *new_values = (double*)malloc(sizeof(double) * x_dim * y_dim * z_dim);
+    assert(new_values != NULL);
     while(!finished) {
         ////////////////////////////////////////////////////////////////////////////
         // swap neighbouring buffer bounds
@@ -247,7 +253,7 @@ int main(int argc, char **argv) {
     // gaether all nodes from parts
 
     if(comm_rank_x == 0 && comm_rank_y == 0) {
-        int k = 10;
+        int k = 0;
         printf("rank_x: %d, rank_y: %d, z: %d\n", comm_rank_x, comm_rank_y, k);
         for(int i = 0; i < y_dim; ++i) { 
             for(int j = 0; j < x_dim; ++j) {
