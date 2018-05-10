@@ -1,5 +1,7 @@
 #include "mpi.h"
+#include "math.h"
 #include "stdio.h"
+#include "string.h"
 #include "stdlib.h"
 #include "assert.h"
 
@@ -24,9 +26,12 @@ int main(int argc, char **argv) {
     static const double Dz = 2.0;
 
     // number of nodes 
-    static const int Nx = 20;
-    static const int Ny = 20;
-    static const int Nz = 20;
+    static const int Nx = 32;
+    static const int Ny = 32;
+    static const int Nz = 32;
+
+    static const double a = 100000;
+    static const double epsilon = 1e-8;
 
     ////////////////////////////////////////////////////////////////////////////////
     MPI_Init(&argc, &argv);
@@ -80,14 +85,10 @@ int main(int argc, char **argv) {
     // +1 in begin and -1 in end to skip neighbouring buffer bounds
     for(int i = 1; i < x_dim - 1; ++i) { 
         for(int j = 1; j < y_dim - 1; ++j) {
-            for(int k = 0; k < z_dim - 1; ++k) {
+            for(int k = 0; k < z_dim; ++k) {
                 double coord_x = x0 + (comm_rank_x * Nx_proc + i - 1) * hx;
                 double coord_y = y0 + (comm_rank_y * Ny_proc + j - 1) * hy;
                 double coord_z = z0 + k * hz;
-
-                if(coord_x > 1 || coord_y > 1 || coord_z > 1) {
-                    printf("achtung!!!\n");
-                }
 
                 // check if we on border node:
                     // top border
@@ -97,7 +98,11 @@ int main(int argc, char **argv) {
                     // left border
                    (comm_rank_x == 0 && i == 1) ||
                     // right border
-                   (comm_rank_x == comm_size_x - 1 && i == x_dim - 2)) 
+                   (comm_rank_x == comm_size_x - 1 && i == x_dim - 2) ||
+                   // facial border
+                   (k == 0) ||
+                   // rear border
+                   (k == z_dim - 1))
                 {
                     proc_nodes[i*y_dim*z_dim + j*z_dim + k] 
                         = fi(coord_x, coord_y, coord_z);
@@ -109,7 +114,6 @@ int main(int argc, char **argv) {
     }
 
     ////////////////////////////////////////////////////////////////////////////////
-    // swap neighbouring buffer bounds
     
     // create type for left and right borders
     MPI_Datatype row_type;
@@ -126,56 +130,128 @@ int main(int argc, char **argv) {
     MPI_Cart_shift(comm2d, 0, 1, &prev_y, &next_y);
     MPI_Cart_shift(comm2d, 1, 1, &prev_x, &next_x);
 
-    // send top border to upper proc
-    if(comm_rank_y != 0) {
-        MPI_Send(proc_nodes + z_dim*y_dim + z_dim,
-                1, col_type, prev_y, 0, comm2d);
-    }
-    // send bottom border to lower proc
-    if(comm_rank_y != comm_size_y - 1) {
-        MPI_Send(proc_nodes + 2*z_dim*y_dim - 2*z_dim,
-                1, col_type, next_y, 0, comm2d);
-    }
-    // send left border to <-
-    if(comm_rank_x != 0) {
-        MPI_Send(proc_nodes + z_dim*y_dim + z_dim,
-                1, row_type, prev_x, 0, comm2d);
-    }
-    // send right border to ->
-    if(comm_rank_x != comm_size_x - 1) {
-        MPI_Send(proc_nodes + z_dim*y_dim*(x_dim-2)+ z_dim,
-                1, row_type, next_x, 0, comm2d);
+    int finished = 0;
 
-    }
+    double new_values[x_dim * y_dim * z_dim];
+    while(!finished) {
+        ////////////////////////////////////////////////////////////////////////////
+        // swap neighbouring buffer bounds
+        
+        // send top border to upper proc
+        if(comm_rank_y != 0) {
+            MPI_Send(proc_nodes + z_dim*y_dim + z_dim,
+                    1, col_type, prev_y, 0, comm2d);
+        }
+        // send bottom border to lower proc
+        if(comm_rank_y != comm_size_y - 1) {
+            MPI_Send(proc_nodes + 2*z_dim*y_dim - 2*z_dim,
+                    1, col_type, next_y, 0, comm2d);
+        }
+        // send left border to <-
+        if(comm_rank_x != 0) {
+            MPI_Send(proc_nodes + z_dim*y_dim + z_dim,
+                    1, row_type, prev_x, 0, comm2d);
+        }
+        // send right border to ->
+        if(comm_rank_x != comm_size_x - 1) {
+            MPI_Send(proc_nodes + z_dim*y_dim*(x_dim-2)+ z_dim,
+                    1, row_type, next_x, 0, comm2d);
 
-    // recieve top neighbour bound from top
-    if(comm_rank_y != 0) {
-        MPI_Recv(proc_nodes + z_dim*y_dim,
-                1, col_type, prev_y, 0, comm2d, MPI_STATUS_IGNORE);
-    }
-    // recieve bottom neighbour bound from down
-    if(comm_rank_y != comm_size_y - 1) {
-        MPI_Recv(proc_nodes + z_dim*y_dim*2 - z_dim,
-                1, col_type, next_y, 0, comm2d, MPI_STATUS_IGNORE);
-    }
-    // recieve left neighbour bound <-
-    if(comm_rank_x != 0) {
-        MPI_Recv(proc_nodes + z_dim,
-                1, row_type, prev_x, 0, comm2d, MPI_STATUS_IGNORE);
-    }
-    // recieve right neighbour bound from ->
-    if(comm_rank_x != comm_size_x - 1) {
-        MPI_Recv(proc_nodes + z_dim*y_dim*(x_dim-1) + z_dim,
-                1, row_type, next_x, 0, comm2d, MPI_STATUS_IGNORE);
-    }
+        }
+        // recieve top neighbour bound from top
+        if(comm_rank_y != 0) {
+            MPI_Recv(proc_nodes + z_dim*y_dim,
+                    1, col_type, prev_y, 0, comm2d, MPI_STATUS_IGNORE);
+        }
+        // recieve bottom neighbour bound from down
+        if(comm_rank_y != comm_size_y - 1) {
+            MPI_Recv(proc_nodes + z_dim*y_dim*2 - z_dim,
+                    1, col_type, next_y, 0, comm2d, MPI_STATUS_IGNORE);
+        }
+        // recieve left neighbour bound <-
+        if(comm_rank_x != 0) {
+            MPI_Recv(proc_nodes + z_dim,
+                    1, row_type, prev_x, 0, comm2d, MPI_STATUS_IGNORE);
+        }
+        // recieve right neighbour bound from ->
+        if(comm_rank_x != comm_size_x - 1) {
+            MPI_Recv(proc_nodes + z_dim*y_dim*(x_dim-1) + z_dim,
+                    1, row_type, next_x, 0, comm2d, MPI_STATUS_IGNORE);
+        }
+        ////////////////////////////////////////////////////////////////////////////
+        // calculate new values fi-(i+1)-th
+        for(int i = 1; i < x_dim - 1; ++i) { 
+            for(int j = 1; j < y_dim - 1; ++j) {
+                for(int k = 0; k < z_dim; ++k) {
+                    // check if we on border node:
+                        // top border
+                    if((comm_rank_y == 0 && j == 1) || 
+                        // bottom border
+                       (comm_rank_y == comm_size_y - 1 && j == y_dim - 2) ||
+                        // left border
+                       (comm_rank_x == 0 && i == 1) ||
+                        // right border
+                       (comm_rank_x == comm_size_x - 1 && i == x_dim - 2) ||
+                       // facial border
+                       (k == 0) ||
+                       // rear border
+                       (k == z_dim - 1)) {
+                        new_values[i*y_dim*z_dim + j*z_dim + k] =
+                        proc_nodes[i*y_dim*z_dim + j*z_dim + k];
+                    } else {
+                        double coord_x = x0 + (comm_rank_x * Nx_proc + i - 1) * hx;
+                        double coord_y = y0 + (comm_rank_y * Ny_proc + j - 1) * hy;
+                        double coord_z = z0 + k * hz;
 
+                        new_values[i*y_dim*z_dim + j*z_dim + k] = 
+                            (1 / ((2/hx/hx) + (2/hy/hy) + (2/hz/hz) + a)) *
+                            (((proc_nodes[(i+1)*y_dim*z_dim + j*z_dim + k] + 
+                               proc_nodes[(i-1)*y_dim*z_dim + j*z_dim + k]) /hx/hx) + 
+                             ((proc_nodes[i*y_dim*z_dim + (j+1)*z_dim + k] + 
+                               proc_nodes[i*y_dim*z_dim + (j-1)*z_dim + k]) /hy/hy) + 
+                             ((proc_nodes[i*y_dim*z_dim + j*z_dim + (k+1)] + 
+                               proc_nodes[i*y_dim*z_dim + j*z_dim + (k-1)]) /hz/hz) -
+                             (6 - a*fi(coord_y, coord_y, coord_z)));
+                    }
+                }
+            }
+        }
+        ////////////////////////////////////////////////////////////////////////////////
+        // check if we need to exit 
+        double local_max_diff = 0.0;
+        for(int i = 1; i < x_dim - 1; ++i) { 
+            for(int j = 1; j < y_dim - 1; ++j) {
+                for(int k = 0; k < z_dim; ++k) {
+                    if(new_values[i*y_dim*z_dim + j*z_dim + k] - 
+                             proc_nodes[i*y_dim*z_dim + j*z_dim + k] > local_max_diff) {
+                        local_max_diff = new_values[i*y_dim*z_dim + j*z_dim + k] -
+                            proc_nodes[i*y_dim*z_dim + j*z_dim + k];
+                    }
+                }
+            }
+        }
 
+        // send all local maximums to 0-th process
+        double global_max_diff;
+        MPI_Allreduce(&local_max_diff, &global_max_diff, 1, MPI_DOUBLE, MPI_MAX, comm2d);
+        finished = (global_max_diff < epsilon) ? 1 : 0;
+
+        if(comm_rank == 0) {
+            printf("maximum difference is: %lf\n", global_max_diff);
+        }
+        
+        // write new node values to main matrix
+        memcpy(proc_nodes, new_values, sizeof(double) * x_dim * y_dim * z_dim);
+    }
     ////////////////////////////////////////////////////////////////////////////////
-    
-    if(comm_rank_x == 1 && comm_rank_y == 1) {
+    // gaether all nodes from parts
+
+    if(comm_rank_x == 0 && comm_rank_y == 0) {
+        int k = 10;
+        printf("rank_x: %d, rank_y: %d, z: %d\n", comm_rank_x, comm_rank_y, k);
         for(int i = 0; i < y_dim; ++i) { 
             for(int j = 0; j < x_dim; ++j) {
-                printf("%lf   ", proc_nodes[j*y_dim*z_dim + i*z_dim + 0]);
+                printf("%.10lf   ", proc_nodes[j*y_dim*z_dim + i*z_dim + k]);
             }
             printf("\n");
         }
@@ -186,3 +262,4 @@ int main(int argc, char **argv) {
 
     return 0;
 }
+
