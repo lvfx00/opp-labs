@@ -1,0 +1,3 @@
+/home/lvfx/prog/opp_labs/lab5/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/lvfx/prog/opp_labs/lab5/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/lvfx/prog/opp_labs/lab5/cmake-build-debug/CMakeFiles/lab5.dir
