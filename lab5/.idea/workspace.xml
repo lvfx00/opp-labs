@@ -35,8 +35,8 @@
       <file leaf-file-name="lab5.c" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/lab5.c">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="486">
-              <caret line="62" column="27" selection-start-line="62" selection-start-column="27" selection-end-line="62" selection-end-column="27" />
+            <state relative-caret-position="306">
+              <caret line="17" selection-start-line="17" selection-end-line="17" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -114,7 +114,7 @@
     </option>
   </component>
   <component name="RunManager" selected="Application.lab5">
-    <configuration name="Build All" type="CMakeRunConfiguration" factoryName="Application" PASS_PARENT_ENVS_2="true" CONFIG_NAME="Debug" EXPLICIT_BUILD_TARGET_NAME="all" />
+    <configuration name="Build All" type="CMakeRunConfiguration" factoryName="Application" PASS_PARENT_ENVS_2="true" CONFIG_NAME="Debug" RUN_TARGET_PROJECT_NAME="lab5" RUN_TARGET_NAME="lab5" EXPLICIT_BUILD_TARGET_NAME="all" />
     <configuration name="lab5" type="CMakeRunConfiguration" factoryName="Application" PASS_PARENT_ENVS_2="true" PROJECT_NAME="lab5" TARGET_NAME="lab5" CONFIG_NAME="Debug" RUN_TARGET_PROJECT_NAME="lab5" RUN_TARGET_NAME="lab5" />
     <list>
       <item itemvalue="Application.Build All" />
@@ -132,12 +132,12 @@
       <option name="presentableId" value="Default" />
       <updated>1527600461119</updated>
       <workItem from="1527600463325" duration="645000" />
-      <workItem from="1527601150585" duration="5287000" />
+      <workItem from="1527601150585" duration="6997000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="5932000" />
+    <option name="totallyTimeSpent" value="7642000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="66" y="0" width="1854" height="1080" extended-state="6" />
@@ -195,8 +195,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/lab5.c">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="486">
-          <caret line="62" column="27" selection-start-line="62" selection-start-column="27" selection-end-line="62" selection-end-column="27" />
+        <state relative-caret-position="306">
+          <caret line="17" selection-start-line="17" selection-end-line="17" />
           <folding>
             <element signature="e#0#18#0" expanded="true" />
           </folding>

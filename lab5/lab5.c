@@ -7,7 +7,7 @@
 #include <assert.h>
 
 #define TASK_NUM 100
-#define MAX_TIME 3000000
+#define MAX_TIME 3300000
 
 int rank;
 int size;
@@ -15,105 +15,6 @@ int tasks_left;
 int *tasks;
 pthread_mutex_t mutex;
 pthread_cond_t cond_worker, cond_asker;
-
-void *worker(void *par) {
-    int curr_task;
-    while (1) {
-        pthread_mutex_lock(&mutex);
-        // take one task and process it
-        if (tasks_left != 0) {
-            --tasks_left;
-            curr_task = tasks[tasks_left];
-//            printf ("proc: %d, doing task with weight: %d. Tasks remain: %d \n", rank, curr_task, tasks_left);
-            pthread_mutex_unlock(&mutex);
-            usleep(curr_task); // TODO implement work
-        } else {
-            // signal asker to ask new tasks from another process
-            pthread_cond_signal(&cond_asker);
-            // wait for answer
-            pthread_cond_wait(&cond_worker, &mutex);
-            if (tasks_left == 0) {
-                pthread_mutex_unlock(&mutex);
-                break;
-            }
-            pthread_mutex_unlock(&mutex);
-        }
-    }
-    printf("proc: %d, worker ended his work\n", rank);
-}
-
-void *taskAsker(void *par) {
-    int ended = -1;
-    int task = 0;
-    while (1) {
-        pthread_mutex_lock(&mutex);
-        if (tasks_left == 0) {
-            pthread_mutex_unlock(&mutex);
-
-            for (int i = 0; i < size; i++) {
-                if (i != rank) {
-                    MPI_Send(&rank, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-//                    printf ("proc: %d, sended request to %d\n", rank, i);
-                    MPI_Recv(&task, 1, MPI_INT, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                    // i-th process have task to share and returned it
-                    if (task != -1) {
-                        pthread_mutex_lock(&mutex);
-                        tasks[0] = task;
-                        tasks_left++;
-                        printf ("proc: %d, recived task from %d. Tasks remain:%d\n", rank, i, tasks_left);
-                        pthread_mutex_unlock(&mutex);
-                        break;
-                    }
-                }
-            }
-            pthread_cond_signal(&cond_worker);
-            if (task == -1) {
-                for (int i = 0; i < size; i++) {
-                    if (i != rank) {
-                        MPI_Send(&ended, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-                    }
-                }
-                printf("proc: %d, taskAsker ended his work\n", rank);
-                break;
-            }
-        } else {
-            pthread_cond_wait(&cond_asker, &mutex);
-            pthread_mutex_unlock(&mutex);
-        }
-    }
-}
-
-void *taskGiver(void *par) {
-    int destrank;
-    int ended_proc_num = 0;
-    int no_more_tasks = -1;
-    int task;
-    MPI_Status test;
-    while (1) {
-        MPI_Recv(&destrank, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &test);
-        if (destrank == -1) {
-            ended_proc_num++;
-            // there is no more processes that may require a task
-            if (ended_proc_num == size - 1) {
-                printf("proc: %d, taskGiver ended his work\n", rank);
-                break;
-            }
-        } else {
-            pthread_mutex_lock(&mutex);
-            if (tasks_left != 0) {
-                tasks_left--;
-                task = tasks[tasks_left];
-                pthread_mutex_unlock(&mutex);
-//                printf ("proc: %d, sending task to %d. Tasks remain: %d\n", rank, destrank, tasks_left);
-                MPI_Send(&task, 1, MPI_INT, destrank, 2, MPI_COMM_WORLD);
-            } else {
-                pthread_mutex_unlock(&mutex);
-//                printf ("proc: %d, sended to %d that he have no tasks\n", rank, destrank);
-                MPI_Send(&no_more_tasks, 1, MPI_INT, destrank, 2, MPI_COMM_WORLD);
-            }
-        }
-    }
-}
 
 int main(int argc, char **argv) {
     int provided;
@@ -164,17 +65,116 @@ int main(int argc, char **argv) {
     pthread_t worker_thread, task_giver_thread, task_asker_thread;
     pthread_create(&task_asker_thread, NULL, taskAsker, NULL);
     pthread_create(&task_giver_thread, NULL, taskGiver, NULL);
-    pthread_create(&worker_thread, NULL, worker, NULL);
+    pthread_create(&worker_thread, NULL, routine, NULL);
     pthread_cond_signal(&cond_asker);
     pthread_cond_signal(&cond_worker);
     pthread_join(worker_thread, NULL);
     pthread_join(task_giver_thread, NULL);
     pthread_join(task_asker_thread, NULL);
     free(tasks);
-//    pthread_cond_destroy(&cond_asker);
-//    pthread_cond_destroy(&cond_worker);
+    pthread_cond_destroy(&cond_asker);
+    pthread_cond_destroy(&cond_worker);
     MPI_Finalize();
     return 0;
+}
+
+void *routine(void *unused) {
+    int curr_task;
+    while (1) {
+        pthread_mutex_lock(&mutex);
+        // take one task and process it
+        if (tasks_left != 0) {
+            --tasks_left;
+            curr_task = tasks[tasks_left];
+//            printf ("proc: %d, doing task with weight: %d. Tasks remain: %d \n", rank, curr_task, tasks_left);
+            pthread_mutex_unlock(&mutex);
+            usleep(curr_task); // TODO implement work
+        } else {
+            // signal asker to ask new tasks from another process
+            pthread_cond_signal(&cond_asker);
+            // wait for answer
+            pthread_cond_wait(&cond_worker, &mutex);
+            if (tasks_left == 0) {
+                pthread_mutex_unlock(&mutex);
+                break;
+            }
+            pthread_mutex_unlock(&mutex);
+        }
+    }
+    printf("[proc %d] Routine ended his work\n", rank);
+}
+
+void *taskAsker(void *unused) {
+    int ended = -1;
+    int task = 0;
+    while (1) {
+        pthread_mutex_lock(&mutex);
+        if (tasks_left == 0) {
+            pthread_mutex_unlock(&mutex);
+
+            for (int i = 0; i < size; i++) {
+                if (i != rank) {
+                    MPI_Send(&rank, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+//                    printf ("proc: %d, sended request to %d\n", rank, i);
+                    MPI_Recv(&task, 1, MPI_INT, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    // i-th process have task to share and returned it
+                    if (task != -1) {
+                        pthread_mutex_lock(&mutex);
+                        tasks[0] = task;
+                        tasks_left++;
+                        printf ("[proc %d] Recived task from process %d\n", rank, i);
+                        pthread_mutex_unlock(&mutex);
+                        break;
+                    }
+                }
+            }
+            pthread_cond_signal(&cond_worker);
+            if (task == -1) {
+                for (int i = 0; i < size; i++) {
+                    if (i != rank) {
+                        MPI_Send(&ended, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+                    }
+                }
+//                printf("[proc %d] TaskAsker ended his work\n", rank);
+                break;
+            }
+        } else {
+            pthread_cond_wait(&cond_asker, &mutex);
+            pthread_mutex_unlock(&mutex);
+        }
+    }
+}
+
+void *taskGiver(void *par) {
+    int destrank;
+    int ended_proc_num = 0;
+    int no_more_tasks = -1;
+    int task;
+    MPI_Status test;
+    while (1) {
+        MPI_Recv(&destrank, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &test);
+        if (destrank == -1) {
+            ended_proc_num++;
+            // there is no more processes that may require a task
+            if (ended_proc_num == size - 1) {
+//                printf("[proc %d] TaskGiver ended his work\n", rank);
+                break;
+            }
+        } else {
+            pthread_mutex_lock(&mutex);
+            if (tasks_left != 0) {
+                tasks_left--;
+                task = tasks[tasks_left];
+                pthread_mutex_unlock(&mutex);
+//                printf ("proc: %d, sending task to %d. Tasks remain: %d\n", rank, destrank, tasks_left);
+                MPI_Send(&task, 1, MPI_INT, destrank, 2, MPI_COMM_WORLD);
+            } else {
+                pthread_mutex_unlock(&mutex);
+//                printf ("proc: %d, sended to %d that he have no tasks\n", rank, destrank);
+                MPI_Send(&no_more_tasks, 1, MPI_INT, destrank, 2, MPI_COMM_WORLD);
+            }
+        }
+    }
 }
 
                      
