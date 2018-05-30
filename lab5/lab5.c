@@ -45,7 +45,6 @@ int main(int argc, char **argv) {
         assert(all_tasks != NULL);
 
         for (int i = 0; i < TASK_NUM; i++) {
-            // TODO implement meaningful task weight
             all_tasks[i] = rand() % MAX_TIME + 1;
         }
     }
@@ -60,21 +59,30 @@ int main(int argc, char **argv) {
     free(displs);
 
     pthread_mutex_init(&mutex, NULL);
+
     pthread_cond_init(&cond_worker, NULL);
     pthread_cond_init(&cond_asker, NULL);
+
     pthread_t worker_thread, task_giver_thread, task_asker_thread;
+
     pthread_create(&task_asker_thread, NULL, taskAsker, NULL);
     pthread_create(&task_giver_thread, NULL, taskGiver, NULL);
     pthread_create(&worker_thread, NULL, routine, NULL);
+
     pthread_cond_signal(&cond_asker);
     pthread_cond_signal(&cond_worker);
+
+    // wait when threads ends their work
     pthread_join(worker_thread, NULL);
     pthread_join(task_giver_thread, NULL);
     pthread_join(task_asker_thread, NULL);
+
+    // cleanup
     free(tasks);
     pthread_cond_destroy(&cond_asker);
     pthread_cond_destroy(&cond_worker);
     MPI_Finalize();
+
     return 0;
 }
 
@@ -86,9 +94,9 @@ void *routine(void *unused) {
         if (tasks_left != 0) {
             --tasks_left;
             curr_task = tasks[tasks_left];
-//            printf ("proc: %d, doing task with weight: %d. Tasks remain: %d \n", rank, curr_task, tasks_left);
+//            printf ("[proc %d] Doing task with weight: %d. Tasks remain: %d \n", rank, curr_task, tasks_left);
             pthread_mutex_unlock(&mutex);
-            usleep(curr_task); // TODO implement work
+            usleep(curr_task);
         } else {
             // signal asker to ask new tasks from another process
             pthread_cond_signal(&cond_asker);
@@ -166,17 +174,14 @@ void *taskGiver(void *par) {
                 tasks_left--;
                 task = tasks[tasks_left];
                 pthread_mutex_unlock(&mutex);
-//                printf ("proc: %d, sending task to %d. Tasks remain: %d\n", rank, destrank, tasks_left);
+//                printf ("[proc %d] Sending task to %d. Tasks remain: %d\n", rank, destrank, tasks_left);
                 MPI_Send(&task, 1, MPI_INT, destrank, 2, MPI_COMM_WORLD);
             } else {
                 pthread_mutex_unlock(&mutex);
-//                printf ("proc: %d, sended to %d that he have no tasks\n", rank, destrank);
+//                printf ("[proc %d] Sent to %d that he have no tasks\n", rank, destrank);
                 MPI_Send(&no_more_tasks, 1, MPI_INT, destrank, 2, MPI_COMM_WORLD);
             }
         }
     }
 }
-
-                     
-
 
